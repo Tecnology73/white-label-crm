@@ -6,10 +6,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	"time"
-	"white-label-crm/app/database"
 	"white-label-crm/app/middleware/auth"
 	"white-label-crm/app/middleware/brand"
+	"white-label-crm/app/models"
 	"white-label-crm/app/services"
+	"white-label-crm/database"
 )
 
 type ApiService interface {
@@ -41,12 +42,14 @@ func main() {
 	http.Use(
 		brand.New(
 			brand.Config{
-				Brands: map[string]map[string]string{
+				Brands: map[string]models.Brand{
 					"alpha": {
-						"Name": "Brand Alpha",
+						Name: "Brand Alpha",
+						Slug: "alpha",
 					},
 					"bravo": {
-						"Name": "Brand Bravo",
+						Name: "Brand Bravo",
+						Slug: "bravo",
 					},
 				},
 			},
@@ -64,6 +67,7 @@ func main() {
 	apiServices := []ApiService{
 		services.NewAuthService(),
 		services.NewUserService(),
+		services.NewCrudService(),
 	}
 
 	for _, service := range apiServices {

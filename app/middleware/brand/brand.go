@@ -2,21 +2,23 @@ package brand
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"white-label-crm/app/models"
 )
 
 type Config struct {
-	Brands map[string]map[string]string
+	Brands map[string]models.Brand
 }
 
 func New(config Config) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		brandSlug := c.Query("brand")
+	return func(ctx *fiber.Ctx) error {
+		brandSlug := ctx.Query("brand")
 		brand, exists := config.Brands[brandSlug]
 		if !exists {
-			return c.SendStatus(fiber.StatusUnauthorized)
+			return ctx.SendStatus(fiber.StatusNotFound)
 		}
 
-		c.Locals("brand", brand)
-		return c.Next()
+		ctx.Locals("dbName", brand.Slug)
+		ctx.Locals("brand", brand)
+		return ctx.Next()
 	}
 }

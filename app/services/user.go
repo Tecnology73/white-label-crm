@@ -6,8 +6,9 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"white-label-crm/app/database"
+	"log"
 	"white-label-crm/app/models"
+	"white-label-crm/database"
 )
 
 type UserService struct {
@@ -25,31 +26,34 @@ func (u *UserService) RegisterRoutes(router *fiber.App) {
 	api.Get("/:user", u.read)
 }
 
-func (u *UserService) list(c *fiber.Ctx) error {
-	users, err := database.Find[*models.User](
+func (u *UserService) list(ctx *fiber.Ctx) error {
+	users, err := database.Find[models.User](
+		database.GetBrandDb(ctx),
 		context.TODO(),
 		bson.M{},
 		options.Find().SetLimit(10),
 	)
 	if err != nil {
-		return c.SendStatus(500)
+		log.Print(err)
+		return ctx.SendStatus(500)
 	}
 
-	return c.JSON(users)
+	return ctx.JSON(users)
 }
 
-func (u *UserService) create(c *fiber.Ctx) error {
+func (u *UserService) create(ctx *fiber.Ctx) error {
 	user := &models.User{
+		Model: database.NewModel(ctx),
 		Name:  "John Doe",
 		Email: "john.doe@mail.com",
 	}
 
-	err := database.Insert(context.TODO(), user)
+	_, err := database.InsertOne[*models.User](database.GetBrandDb(ctx), context.TODO(), user)
 	if err != nil {
-		return c.SendStatus(500)
+		return ctx.SendStatus(500)
 	}
 
-	return c.JSON(user)
+	return ctx.JSON(user)
 
 	/*users := make([]*models.User, 5)
 	for i := range users {
@@ -62,25 +66,26 @@ func (u *UserService) create(c *fiber.Ctx) error {
 	err := database.InsertMany(context.TODO(), users)
 	if err != nil {
 		log.Printf("[UserService.create] %v\n", err)
-		return c.SendStatus(500)
+		return ctx.SendStatus(500)
 	}
 
-	return c.JSON(users)*/
+	return ctx.JSON(users)*/
 }
 
-func (u *UserService) read(c *fiber.Ctx) error {
-	id, err := primitive.ObjectIDFromHex(c.Params("user"))
+func (u *UserService) read(ctx *fiber.Ctx) error {
+	id, err := primitive.ObjectIDFromHex(ctx.Params("user"))
 	if err != nil {
-		return c.SendStatus(404)
+		return ctx.SendStatus(404)
 	}
 
-	user, err := database.FindOne[*models.User](
+	user, err := database.FindOne[models.User](
+		database.GetBrandDb(ctx),
 		context.TODO(),
 		bson.M{"_id": id},
 	)
 	if err != nil {
-		return c.SendStatus(404)
+		return ctx.SendStatus(404)
 	}
 
-	return c.JSON(user)
+	return ctx.JSON(user)
 }

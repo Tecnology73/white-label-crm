@@ -3,6 +3,7 @@ package auth
 import (
 	"github.com/gofiber/fiber/v2"
 	"slices"
+	"white-label-crm/database"
 )
 
 type Config struct {
@@ -10,13 +11,28 @@ type Config struct {
 }
 
 func New(config Config) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		path := c.Path()
+	return func(ctx *fiber.Ctx) error {
+		path := ctx.Path()
 		if slices.Contains(config.ExcludePaths, path) {
-			return c.Next()
+			ctx.Locals(
+				"user",
+				database.UserRelation{
+					ID:   0,
+					Name: "System",
+				},
+			)
+
+			return ctx.Next()
 		}
 
-		// TODO
-		return c.Next()
+		ctx.Locals(
+			"user",
+			database.UserRelation{
+				ID:   1,
+				Name: "Admin",
+			},
+		)
+
+		return ctx.Next()
 	}
 }
