@@ -13,12 +13,18 @@ var (
 	client *mongo.Client
 )
 
-func NewConnection(opts *options.ClientOptions) {
+func NewConnection(opts *options.ClientOptions) *mongo.Client {
 	var err error
 	client, err = mongo.Connect(context.TODO(), opts)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	return client
+}
+
+func GetSystemDb() *mongo.Database {
+	return client.Database("system")
 }
 
 func GetBrandDb(ctx *fiber.Ctx) *mongo.Database {
@@ -40,11 +46,12 @@ func Find[T any, R interface {
 	opts ...*options.FindOptions,
 ) ([]R, error) {
 	var m R // Temporary
-	log.Printf(
-		"[database.FindOne] Collection(%v) | Filter(%v)\n",
+	/*log.Printf(
+		"[database.Find] Collection(%v) | Filter(%v)\n",
 		m.GetCollectionName(),
 		filter,
-	)
+	)*/
+
 	cursor, err := db.Collection(m.GetCollectionName()).Find(ctx, filter, opts...)
 	if err != nil {
 		return nil, err
@@ -73,11 +80,12 @@ func FindOne[T any, R interface {
 	opts ...*options.FindOneOptions,
 ) (R, error) {
 	var record R
-	log.Printf(
+	/*log.Printf(
 		"[database.FindOne] Collection(%v) | Filter(%v)\n",
 		record.GetCollectionName(),
 		filter,
-	)
+	)*/
+
 	err := db.Collection(record.GetCollectionName()).
 		FindOne(ctx, filter, opts...).
 		Decode(&record)
@@ -92,11 +100,11 @@ func InsertOne[T CollectionModel](
 	opts ...*options.InsertOneOptions,
 ) (*mongo.InsertOneResult, error) {
 	var m T // temporary
-	log.Printf(
+	/*log.Printf(
 		"[database.InsertOne] Collection(%v) | Record(%v)\n",
 		m.GetCollectionName(),
 		doc,
-	)
+	)*/
 
 	return db.Collection(m.GetCollectionName()).InsertOne(ctx, doc, opts...)
 }
@@ -108,11 +116,11 @@ func InsertMany[T CollectionModel](
 	opts ...*options.InsertManyOptions,
 ) (*mongo.InsertManyResult, error) {
 	var m T // temporary
-	log.Printf(
+	/*log.Printf(
 		"[database.InsertMany] Collection(%v) | Docs(%v)\n",
 		m.GetCollectionName(),
 		docs,
-	)
+	)*/
 
 	return db.Collection(m.GetCollectionName()).InsertMany(ctx, docs, opts...)
 }
@@ -125,12 +133,12 @@ func UpdateOne[T CollectionModel](
 	opts ...*options.UpdateOptions,
 ) (*mongo.UpdateResult, error) {
 	var m T // temporary
-	log.Printf(
+	/*log.Printf(
 		"[database.UpdateOne] Collection(%v) | Filter(%v) | Update(%v)\n",
 		m.GetCollectionName(),
 		filter,
 		update,
-	)
+	)*/
 
 	return db.Collection(m.GetCollectionName()).UpdateOne(ctx, filter, update, opts...)
 }
@@ -143,12 +151,12 @@ func UpdateMany[T CollectionModel](
 	opts ...*options.UpdateOptions,
 ) (*mongo.UpdateResult, error) {
 	var m T // temporary
-	log.Printf(
+	/*log.Printf(
 		"[database.UpdateMany] Collection(%v) | Filter(%v) | Update(%v)\n",
 		m.GetCollectionName(),
 		filter,
 		update,
-	)
+	)*/
 
 	return db.Collection(m.GetCollectionName()).UpdateMany(ctx, filter, update, opts...)
 }

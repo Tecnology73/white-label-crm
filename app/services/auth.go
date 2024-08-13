@@ -5,16 +5,25 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/bson"
 	"log"
+	"time"
 	"white-label-crm/app/models"
 	"white-label-crm/database"
 	"white-label-crm/hash"
+	"white-label-crm/utils"
 )
 
 type AuthService struct {
+	limiter *utils.ThroughputLimiter
 }
 
-func NewAuthService() *AuthService {
-	return &AuthService{}
+type AuthOptions struct {
+	Throughput uint
+}
+
+func NewAuthService(opts *AuthOptions) *AuthService {
+	return &AuthService{
+		limiter: utils.NewThroughputLimiter(opts.Throughput),
+	}
 }
 
 func (s *AuthService) RegisterRoutes(router *fiber.App) {
@@ -28,6 +37,14 @@ type loginRequest struct {
 }
 
 func (s *AuthService) login(ctx *fiber.Ctx) error {
+	// Limit requests
+	lock, err := s.limiter.Acquire(5 * time.Second)
+	if err != nil {
+		log.Printf("[AuthService.login] %v\n", err)
+		return ctx.SendStatus(fiber.StatusInternalServerError)
+	}
+	defer s.limiter.Release(lock)
+
 	// Parse body
 	var data loginRequest
 	if err := ctx.BodyParser(&data); err != nil {
@@ -63,6 +80,14 @@ type registerRequest struct {
 }
 
 func (s *AuthService) register(ctx *fiber.Ctx) error {
+	// Limit requests
+	lock, err := s.limiter.Acquire(5 * time.Second)
+	if err != nil {
+		log.Printf("[AuthService.login] %v\n", err)
+		return ctx.SendStatus(fiber.StatusInternalServerError)
+	}
+	defer s.limiter.Release(lock)
+
 	// Parse body
 	var data registerRequest
 	if err := ctx.BodyParser(&data); err != nil {
@@ -102,47 +127,4 @@ func (s *AuthService) register(ctx *fiber.Ctx) error {
 	// Registration complete
 	log.Printf("[AuthService.register] Complete: %v\n", user)
 	return ctx.SendStatus(fiber.StatusNoContent)
-
-	/*database.UpdateOne(
-		database.GetBrandDb(ctx),
-		context.TODO(),
-		&user,
-		bson.M{
-			"$set": bson.M{
-				"name":  "Jane Doe",
-				"email": "jane.doe@mail.com",
-			},
-		},
-	)
-
-	database.UpdateOne2[*models.User](
-		database.GetBrandDb(ctx),
-		context.TODO(),
-		bson.M{},
-		bson.M{},
-	)*/
-
-	/*ok, err := database.UpdateOne[*models.User](
-		database.GetBrandDb(ctx),
-		context.TODO(),
-		user.GetQueryFilter(),
-		bson.M{},
-	)
-	if err != nil {
-		return ctx.SendStatus(500)
-	}
-
-	if !ok {
-		return ctx.SendStatus(500)
-	}*/
-
-	/*_, err = database.UpdateMany[*models.User](
-		database.GetBrandDb(ctx),
-		context.TODO(),
-		bson.M{},
-		bson.M{},
-	)
-	if err != nil {
-		return ctx.SendStatus(500)
-	}*/
 }

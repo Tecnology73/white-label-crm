@@ -14,7 +14,7 @@ import (
 // takes, increasing Time to the highest possible value that
 // you find acceptable for how long it takes.
 const (
-	PasswordTime       = 1
+	PasswordTime       = 3
 	PasswordMemory     = 64 * 1024
 	PasswordThreads    = 4
 	PasswordSaltLength = 16

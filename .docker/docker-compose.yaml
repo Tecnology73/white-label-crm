@@ -1,11 +1,40 @@
 services:
-    mongo:
-        image: mongo:7.0.12
-        container_name: mongo
-        ports:
-          - "27017:27017"
-        volumes:
-          - ./data:/data/db
-        environment:
-          MONGO_INITDB_ROOT_USERNAME: root
-          MONGO_INITDB_ROOT_PASSWORD: root
+  mongo:
+    image: mongo:7.0.12
+    container_name: crm-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongodb/data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+    entrypoint: ["/usr/bin/mongod", "--bind_ip_all", "--replSet", "rs0", "--wiredTigerCacheSizeGB", "1"]
+
+  mongosetup:
+    image: mongo-setup
+    build: ./mongodb/setup
+    container_name: mongosetup
+    depends_on:
+      - mongo
+
+  redis:
+    image: redis:7.4.0
+    container_name: crm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+        - ./redis/data:/data
+
+  rabbitmq:
+    hostname: 'white-label-crm'
+    image: rabbitmq:3.13.6-management
+    container_name: crm-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+        - ./rabbitmq/data:/var/lib/rabbitmq/mnesia
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
