@@ -23,6 +23,13 @@ func NewConnection(opts *options.ClientOptions) *mongo.Client {
 	return client
 }
 
+func CloseConnection() {
+	if err := client.Disconnect(context.Background()); err != nil {
+		log.Fatalf("[database.CloseConnection] %v\n", err)
+	}
+	client = nil
+}
+
 func GetSystemDb() *mongo.Database {
 	return client.Database("system")
 }

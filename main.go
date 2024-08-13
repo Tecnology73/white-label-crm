@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/pprof"
+	amqp "github.com/rabbitmq/amqp091-go"
 	redis2 "github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"white-label-crm/app/middleware/brand"
 	"white-label-crm/app/services"
 	"white-label-crm/database"
+	"white-label-crm/rabbitmq"
 	"white-label-crm/redis"
 )
 
@@ -18,7 +20,7 @@ type ApiService interface {
 	RegisterRoutes(router *fiber.App)
 }
 
-func initDatabase() {
+func initDatabase() func() {
 	dbClient := database.NewConnection(
 		options.Client().
 			SetAuth(
@@ -31,9 +33,10 @@ func initDatabase() {
 	)
 
 	watcher := database.NewWatcher(dbClient)
-	err := watcher.Start()
-	if err != nil {
-		log.Fatalf("[watcher.Start] %v\n", err)
+
+	return func() {
+		database.CloseConnection()
+		watcher.CloseConnection()
 	}
 }
 
@@ -48,9 +51,19 @@ func initRedis() {
 	)
 }
 
+func initRabbitmq() {
+	rabbitmq.NewConnection("amqp://guest:guest@localhost:5672", &amqp.Config{}, 10)
+}
+
 func main() {
-	initDatabase()
+	closeDatabase := initDatabase()
+	defer closeDatabase()
+
 	initRedis()
+	defer redis.CloseConnection()
+
+	initRabbitmq()
+	defer rabbitmq.CloseConnection()
 
 	http := fiber.New()
 	http.Use(pprof.New())

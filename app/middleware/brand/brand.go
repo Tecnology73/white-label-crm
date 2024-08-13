@@ -16,16 +16,18 @@ import (
 
 func New() fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
-		brandSlug := strings.TrimSpace(ctx.Query("brand"))
-		// TODO: Restrict slug to a min & max length.
-		// The slug should probably be something like `maxLength(brand.Slug, 16) + "-" + strings.random(8)`
-		if len(brandSlug) == 0 {
-			log.Printf("[brand middleware] Invalid slug | %s\n", ctx.Query("brand"))
-			return ctx.SendStatus(fiber.StatusNotFound)
+		hostname := ctx.Hostname()
+		// Remove port from hostname (dev environment)
+		if idx := strings.Index(hostname, ":"); idx > -1 {
+			hostname = hostname[:idx]
+			if len(strings.TrimSpace(hostname)) == 0 {
+				log.Printf("[brand middleware] Invalid hostname | Raw(%v) | Parsed(%v)\n", ctx.Hostname(), hostname)
+				return ctx.SendStatus(fiber.StatusNotFound)
+			}
 		}
 
 		// Lookup brand
-		data, err := redis.Client.HGetAll(context.Background(), fmt.Sprintf("brands:%s", brandSlug)).Result()
+		data, err := redis.Client.HGetAll(context.Background(), fmt.Sprintf("brands:%s", hostname)).Result()
 		if err != nil {
 			if !errors.Is(err, redis2.Nil) {
 				log.Printf("[brand middleware] %v\n", err)
@@ -42,12 +44,13 @@ func New() fiber.Handler {
 
 		// Store the brand on the context
 		brand := models.Brand{
-			Model: database.Model{ID: id},
-			Slug:  data["slug"],
-			Name:  data["Name"],
+			Model:  database.Model{ID: id},
+			Name:   data["name"],
+			Slug:   data["slug"],
+			Domain: data["domain"],
 		}
 
-		ctx.Locals("dbName", brand.Slug)
+		ctx.Locals("dbName", fmt.Sprintf("brand_%s", brand.Slug))
 		ctx.Locals("brand", brand)
 		return ctx.Next()
 	}

@@ -18,3 +18,10 @@ func NewConnection(opts *redis.Options) *redis.Client {
 
 	return Client
 }
+
+func CloseConnection() {
+	if err := Client.Close(); err != nil {
+		log.Fatalf("[redis.CloseConnection] %v\n", err)
+	}
+	Client = nil
+}

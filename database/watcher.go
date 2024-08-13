@@ -21,19 +21,13 @@ type Watcher struct {
 }
 
 func NewWatcher(client *mongo.Client) *Watcher {
-	return &Watcher{
+	watcher := &Watcher{
 		client: client,
 		db:     GetSystemDb(),
 	}
-}
-
-func (w *Watcher) Start() error {
-	if w.stream != nil {
-		return fmt.Errorf("stream has already been started")
-	}
 
 	// Watch for any document changes in `system.brands`
-	stream, err := w.db.Watch(
+	stream, err := watcher.db.Watch(
 		context.Background(),
 		mongo.Pipeline{
 			{
@@ -50,21 +44,21 @@ func (w *Watcher) Start() error {
 		},
 	)
 	if err != nil {
-		return err
+		log.Fatalf("[watcher.NewConnection] %v\n", err)
 	}
 
 	// Create a context that will let the goroutine be stopped
 	ctx, cancel := context.WithCancel(context.Background())
-	w.cancel = cancel
-	w.stream = stream
+	watcher.cancel = cancel
+	watcher.stream = stream
 
-	go w.process(ctx)
-	return nil
+	go watcher.process(ctx)
+	return watcher
 }
 
-func (w *Watcher) Stop() error {
+func (w *Watcher) CloseConnection() {
 	if w.stream == nil {
-		return nil
+		return
 	}
 
 	// Stop processing the change stream
@@ -73,10 +67,8 @@ func (w *Watcher) Stop() error {
 	// Close the change stream
 	err := w.stream.Close(context.Background())
 	if err != nil {
-		return err
+		log.Fatalf("[watcher.CloseConnection] %v\n", err)
 	}
-
-	return nil
 }
 
 func (w *Watcher) process(ctx context.Context) {
@@ -90,9 +82,10 @@ func (w *Watcher) process(ctx context.Context) {
 		switch data.OperationType {
 		case OperationInsert:
 			brand := map[string]string{
-				"_id":  data.DocumentKey.ID.Hex(),
-				"name": data.FullDocument["name"].(string),
-				"slug": data.FullDocument["slug"].(string),
+				"_id":    data.DocumentKey.ID.Hex(),
+				"name":   data.FullDocument["name"].(string),
+				"slug":   data.FullDocument["slug"].(string),
+				"domain": data.FullDocument["domain"].(string),
 			}
 
 			err := w.insertCachedBrand(ctx, data.DocumentKey.ID, brand)
@@ -140,7 +133,7 @@ func (w *Watcher) insertCachedBrand(ctx context.Context, id primitive.ObjectID, 
 	_, err := redis.Client.TxPipelined(
 		ctx,
 		func(pipe redis2.Pipeliner) error {
-			key := fmt.Sprintf("brands:%v", brand["slug"])
+			key := fmt.Sprintf("brands:%v", brand["domain"])
 			for k, v := range brand {
 				pipe.HSet(ctx, key, k, v)
 			}
@@ -149,7 +142,7 @@ func (w *Watcher) insertCachedBrand(ctx context.Context, id primitive.ObjectID, 
 			pipe.Set(
 				ctx,
 				fmt.Sprintf("brands:$id:%s", id.Hex()),
-				brand["slug"],
+				brand["domain"],
 				0,
 			)
 
@@ -169,12 +162,23 @@ func (w *Watcher) updateCachedBrand(ctx context.Context, data changeEvent) error
 		return w.restoreCachedBrand(ctx, data)
 	}
 
+	// If the domain changed, the keys need to be updated.
+	// Just delete the old cached data & recreate it.
+	if _, hasChanged := data.UpdateDescription.UpdatedFields["domain"].(string); hasChanged {
+		if err := w.deleteCachedBrand(ctx, data); err != nil {
+			return err
+		}
+
+		return w.restoreCachedBrand(ctx, data)
+	}
+
+	// Get a list of changes that we care about.
 	changes := getChanges(data)
 	if len(changes) == 0 {
 		return nil
 	}
 
-	slug, err := redis.Client.Get(ctx, fmt.Sprintf("brands:$id:%s", data.DocumentKey.ID.Hex())).Result()
+	domain, err := redis.Client.Get(ctx, fmt.Sprintf("brands:$id:%s", data.DocumentKey.ID.Hex())).Result()
 	if err != nil {
 		if errors.Is(err, redis2.Nil) {
 			return nil
@@ -186,7 +190,7 @@ func (w *Watcher) updateCachedBrand(ctx context.Context, data changeEvent) error
 	_, err = redis.Client.TxPipelined(
 		ctx,
 		func(pipe redis2.Pipeliner) error {
-			key := fmt.Sprintf("brands:%s", slug)
+			key := fmt.Sprintf("brands:%s", domain)
 			for k, v := range changes {
 				pipe.HSet(ctx, key, k, v)
 			}
@@ -215,16 +219,17 @@ func (w *Watcher) restoreCachedBrand(ctx context.Context, data changeEvent) erro
 		ctx,
 		brand["_id"].(primitive.ObjectID),
 		map[string]string{
-			"_id":  brand["_id"].(primitive.ObjectID).Hex(),
-			"name": brand["name"].(string),
-			"slug": brand["slug"].(string),
+			"_id":    brand["_id"].(primitive.ObjectID).Hex(),
+			"name":   brand["name"].(string),
+			"slug":   brand["slug"].(string),
+			"domain": brand["domain"].(string),
 		},
 	)
 }
 
 func (w *Watcher) deleteCachedBrand(ctx context.Context, data changeEvent) error {
-	// Lookup (and delete) the slug from _id
-	slug, err := redis.Client.GetDel(ctx, fmt.Sprintf("brands:$id:%s", data.DocumentKey.ID.Hex())).Result()
+	// Lookup (and delete) the domain from _id
+	domain, err := redis.Client.GetDel(ctx, fmt.Sprintf("brands:$id:%s", data.DocumentKey.ID.Hex())).Result()
 	if err != nil {
 		if errors.Is(err, redis2.Nil) {
 			return nil
@@ -234,7 +239,7 @@ func (w *Watcher) deleteCachedBrand(ctx context.Context, data changeEvent) error
 	}
 
 	// Delete brand info
-	return redis.Client.Del(ctx, fmt.Sprintf("brands:%s", slug)).Err()
+	return redis.Client.Del(ctx, fmt.Sprintf("brands:%s", domain)).Err()
 }
 
 type OperationType string
@@ -260,16 +265,16 @@ type documentKey struct {
 }
 
 type updateDescription struct {
-	UpdatedFields      map[string]interface{} `bson:"updatedFields"`
-	RemovedFields      []string               `bson:"removedFields"`
-	TruncatedArrays    []truncatedField       `bson:"truncatedFields"`
-	DisambiguatedPaths map[string]interface{} `bson:"disambiguatedPaths"`
+	UpdatedFields map[string]interface{} `bson:"updatedFields"`
+	RemovedFields []string               `bson:"removedFields"`
+	//TruncatedArrays    []truncatedField       `bson:"truncatedFields"`
+	//DisambiguatedPaths map[string]interface{} `bson:"disambiguatedPaths"`
 }
 
-type truncatedField struct {
+/*type truncatedField struct {
 	Field   string `bson:"field"`
 	NewSize uint32 `bson:"newSize"`
-}
+}*/
 
 type namespace struct {
 	Database   string `bson:"db"`
